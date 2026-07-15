@@ -43,21 +43,27 @@ export function formatRank(tier: string, rank: string, lp: number): string {
 
 /** Reverse a score into a rough display label (for averages). */
 export function approxRankFromScore(score: number): string {
+  const parsed = approxRankPartsFromScore(score);
+  if (!parsed) return "Unranked";
+  return formatRank(parsed.tier, parsed.division, parsed.lp);
+}
+
+export function approxRankPartsFromScore(
+  score: number,
+): { tier: string; division: string; lp: number } | null {
   const tiers = Object.entries(TIER_BASE).sort((a, b) => b[1] - a[1]);
   for (const [tier, base] of tiers) {
     if (score >= base) {
       if (tier === "MASTER" || tier === "GRANDMASTER" || tier === "CHALLENGER") {
-        const lp = Math.round(score - base);
-        return formatRank(tier, "I", lp);
+        return { tier, division: "I", lp: Math.round(score - base) };
       }
       const within = score - base;
       let division = "IV";
       if (within >= 300) division = "I";
       else if (within >= 200) division = "II";
       else if (within >= 100) division = "III";
-      const lp = Math.round(within % 100);
-      return formatRank(tier, division, lp);
+      return { tier, division, lp: Math.round(within % 100) };
     }
   }
-  return "Unranked";
+  return null;
 }

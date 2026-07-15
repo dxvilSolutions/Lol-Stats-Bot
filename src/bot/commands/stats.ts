@@ -1,8 +1,4 @@
-import {
-  EmbedBuilder,
-  SlashCommandBuilder,
-  type ChatInputCommandInteraction,
-} from "discord.js";
+import { SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
 import {
   regionDiscordChoices,
   resolveRegion,
@@ -10,13 +6,14 @@ import {
 import { RiotApiError } from "../../riot/types.js";
 import { buildPlayerRecentStats } from "../../stats/player.js";
 import { parseRiotId } from "../../utils/riot-id.js";
+import { buildStatsEmbed } from "../embeds/stats-embed.js";
 import type { BotCommand } from "./types.js";
 
 export const statsCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("stats")
     .setDescription(
-      "Winrate, KDA, campeones y ELO medio de rivales (últimas ranked Solo).",
+      "Estadísticas ranked Solo: WR, KDA, campeones y ELO de rivales.",
     )
     .addStringOption((opt) =>
       opt
@@ -24,20 +21,22 @@ export const statsCommand: BotCommand = {
         .setDescription('Riot ID, ej. "Nombre#TAG"')
         .setRequired(true),
     )
-    .addStringOption((opt) =>
-      opt
-        .setName("region")
-        .setDescription("Región del invocador (default: LAN)")
-        .setRequired(false)
-        .addChoices(...regionDiscordChoices().slice(0, 25)),
-    )
     .addIntegerOption((opt) =>
       opt
         .setName("partidas")
-        .setDescription("Cuántas ranked recientes analizar (1–20, default 12)")
+        .setDescription(
+          "Cuántas ranked Solo recientes usar (1–20). Por defecto: 12",
+        )
         .setRequired(false)
         .setMinValue(1)
         .setMaxValue(20),
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName("region")
+        .setDescription("Región del invocador (por defecto: LAN)")
+        .setRequired(false)
+        .addChoices(...regionDiscordChoices().slice(0, 25)),
     ),
 
   async execute(interaction: ChatInputCommandInteraction, ctx) {
@@ -53,6 +52,9 @@ export const statsCommand: BotCommand = {
         ? resolveRegion(regionRaw)
         : ctx.defaultRegion;
 
+      // Scale opponent lookups lightly with sample size (rate-limit friendly)
+      const maxOpponentLookups = Math.min(20, Math.max(8, matchCount + 3));
+
       const stats = await buildPlayerRecentStats(
         ctx.riot,
         region,
@@ -60,7 +62,7 @@ export const statsCommand: BotCommand = {
         tagLine,
         {
           matchCount,
-          maxOpponentLookups: 15,
+          maxOpponentLookups,
         },
       );
 
@@ -71,45 +73,7 @@ export const statsCommand: BotCommand = {
         return;
       }
 
-      const champs = stats.topChampions
-        .map(
-          (c) =>
-            `• **${c.champion}** — ${c.games}p, ${c.winrate}% WR, KDA ${c.avgKda}`,
-        )
-        .join("\n");
-
-      const embed = new EmbedBuilder()
-        .setColor(0x0ac8b9)
-        .setTitle(stats.riotId)
-        .setDescription(
-          `Región **${stats.region.label}** · Nivel ${stats.level}` +
-            (stats.currentSoloRank
-              ? ` · Solo/Duo **${stats.currentSoloRank}**`
-              : " · Sin rank Solo visible"),
-        )
-        .addFields(
-          {
-            name: `Últimas ${stats.sampleSize} ranked`,
-            value: [
-              `**WR** ${stats.winrate}% (${stats.wins}W / ${stats.losses}L)`,
-              `**KDA** ${stats.avgKda}`,
-              stats.avgOpponentRank
-                ? `**ELO medio rivales** ~${stats.avgOpponentRank} (${stats.opponentsSampled} sampled)`
-                : "**ELO medio rivales** no disponible",
-            ].join("\n"),
-            inline: false,
-          },
-          {
-            name: "Campeones más usados",
-            value: champs || "—",
-            inline: false,
-          },
-        )
-        .setFooter({
-          text: "Datos via Riot API · ELO de rivales es aproximación del rank actual",
-        })
-        .setTimestamp();
-
+      const embed = await buildStatsEmbed(stats);
       await interaction.editReply({ embeds: [embed] });
     } catch (err) {
       await interaction.editReply({ content: formatError(err) });

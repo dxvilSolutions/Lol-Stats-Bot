@@ -2,7 +2,12 @@ import type { RegionConfig } from "../config/regions.js";
 import type { RiotClient } from "../riot/client.js";
 import { RiotApiError } from "../riot/types.js";
 import type { LeagueEntry, MatchDto, MatchParticipant } from "../riot/types.js";
-import { approxRankFromScore, formatRank, rankScore } from "./rank.js";
+import {
+  approxRankFromScore,
+  approxRankPartsFromScore,
+  formatRank,
+  rankScore,
+} from "./rank.js";
 
 /** Ranked Solo/Duo queue id */
 export const QUEUE_RANKED_SOLO = 420;
@@ -15,18 +20,31 @@ export interface ChampionUsage {
   avgKda: string;
 }
 
+export interface RankSnapshot {
+  tier: string;
+  division: string;
+  lp: number;
+  wins: number;
+  losses: number;
+  hotStreak: boolean;
+  formatted: string;
+}
+
 export interface RecentStats {
   riotId: string;
   region: RegionConfig;
   level: number;
-  currentSoloRank: string | null;
+  profileIconId: number;
+  soloRank: RankSnapshot | null;
   sampleSize: number;
   wins: number;
   losses: number;
   winrate: number;
-  avgKda: string;
+  avgKda: number;
+  avgKdaText: string;
   topChampions: ChampionUsage[];
   avgOpponentRank: string | null;
+  avgOpponentTier: string | null;
   opponentsSampled: number;
 }
 
@@ -76,10 +94,11 @@ export async function buildPlayerRecentStats(
     ? Math.round((wins / selfGames.length) * 1000) / 10
     : 0;
 
-  const avgKda = formatKda(averageKda(selfGames));
+  const avgKda = averageKda(selfGames);
   const topChampions = computeTopChampions(selfGames, 3);
 
   let avgOpponentRank: string | null = null;
+  let avgOpponentTier: string | null = null;
   let opponentsSampled = 0;
 
   if (maxOpponentLookups > 0 && selfGames.length > 0) {
@@ -91,6 +110,7 @@ export async function buildPlayerRecentStats(
       maxOpponentLookups,
     );
     avgOpponentRank = result.label;
+    avgOpponentTier = result.tier;
     opponentsSampled = result.sampled;
   }
 
@@ -98,16 +118,27 @@ export async function buildPlayerRecentStats(
     riotId: `${account.gameName}#${account.tagLine}`,
     region,
     level: summoner.summonerLevel,
-    currentSoloRank: solo
-      ? formatRank(solo.tier, solo.rank, solo.leaguePoints)
+    profileIconId: summoner.profileIconId,
+    soloRank: solo
+      ? {
+          tier: solo.tier,
+          division: solo.rank,
+          lp: solo.leaguePoints,
+          wins: solo.wins,
+          losses: solo.losses,
+          hotStreak: Boolean(solo.hotStreak),
+          formatted: formatRank(solo.tier, solo.rank, solo.leaguePoints),
+        }
       : null,
     sampleSize: selfGames.length,
     wins,
     losses,
     winrate,
     avgKda,
+    avgKdaText: formatKda(avgKda),
     topChampions,
     avgOpponentRank,
+    avgOpponentTier,
     opponentsSampled,
   };
 }
@@ -160,7 +191,7 @@ async function averageOpponentRank(
   selfPuuid: string,
   matches: MatchDto[],
   maxLookups: number,
-): Promise<{ label: string | null; sampled: number }> {
+): Promise<{ label: string | null; tier: string | null; sampled: number }> {
   const opponents = new Set<string>();
 
   for (const match of matches) {
@@ -182,17 +213,21 @@ async function averageOpponentRank(
         scores.push(rankScore(solo.tier, solo.rank, solo.leaguePoints));
       }
     } catch (err) {
-      // Skip players that 404 / fail; keep going for the rest
       if (!(err instanceof RiotApiError)) throw err;
     }
   }
 
   if (scores.length === 0) {
-    return { label: null, sampled: 0 };
+    return { label: null, tier: null, sampled: 0 };
   }
 
   const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-  return { label: approxRankFromScore(avg), sampled: scores.length };
+  const parts = approxRankPartsFromScore(avg);
+  return {
+    label: approxRankFromScore(avg),
+    tier: parts?.tier ?? null,
+    sampled: scores.length,
+  };
 }
 
 function pickBestSoloEntry(entries: LeagueEntry[]): LeagueEntry | undefined {
