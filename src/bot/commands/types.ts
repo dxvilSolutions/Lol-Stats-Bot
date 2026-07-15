@@ -1,6 +1,6 @@
 import type {
   ChatInputCommandInteraction,
-  SlashCommandBuilder,
+  SlashCommandOptionsOnlyBuilder,
 } from "discord.js";
 import type { RegionConfig } from "../../config/regions.js";
 import type { RiotClient } from "../../riot/client.js";
@@ -11,7 +11,7 @@ export interface CommandContext {
 }
 
 export interface BotCommand {
-  data: SlashCommandBuilder;
+  data: SlashCommandOptionsOnlyBuilder;
   execute: (
     interaction: ChatInputCommandInteraction,
     ctx: CommandContext,

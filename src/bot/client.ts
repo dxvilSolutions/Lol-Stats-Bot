@@ -1,10 +1,4 @@
-import {
-  Client,
-  Collection,
-  Events,
-  GatewayIntentBits,
-  MessageFlags,
-} from "discord.js";
+import { Client, Collection, Events, GatewayIntentBits } from "discord.js";
 import type { RegionConfig } from "../config/regions.js";
 import type { RiotClient } from "../riot/client.js";
 import {
@@ -51,7 +45,7 @@ export function createBot(
       console.error(`Command /${interaction.commandName} failed`, err);
       const message = {
         content: "Hubo un error al ejecutar el comando.",
-        flags: MessageFlags.Ephemeral,
+        ephemeral: true as const,
       };
       if (interaction.deferred || interaction.replied) {
         await interaction.followUp(message);
