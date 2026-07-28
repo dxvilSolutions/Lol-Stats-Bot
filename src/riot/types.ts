@@ -51,6 +51,8 @@ export interface MatchParticipant {
   neutralMinionsKilled: number;
   individualPosition?: string;
   teamPosition?: string;
+  /** Arena (and some modes): finishing place 1–8 */
+  placement?: number;
 }
 
 export interface MatchInfo {

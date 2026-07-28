@@ -1,3 +1,5 @@
+import type { QueueConfig } from "../config/queues.js";
+import { QUEUES } from "../config/queues.js";
 import type { RegionConfig } from "../config/regions.js";
 import type { RiotClient } from "../riot/client.js";
 import { RiotApiError } from "../riot/types.js";
@@ -9,7 +11,7 @@ import {
   rankScore,
 } from "./rank.js";
 
-/** Ranked Solo/Duo queue id */
+/** @deprecated use queues config — kept for any leftover imports */
 export const QUEUE_RANKED_SOLO = 420;
 
 export interface ChampionUsage {
@@ -33,9 +35,11 @@ export interface RankSnapshot {
 export interface RecentStats {
   riotId: string;
   region: RegionConfig;
+  queue: QueueConfig;
   level: number;
   profileIconId: number;
-  soloRank: RankSnapshot | null;
+  /** Rank for this mode when ranked (Solo or Flex). */
+  modeRank: RankSnapshot | null;
   sampleSize: number;
   wins: number;
   losses: number;
@@ -49,13 +53,9 @@ export interface RecentStats {
 }
 
 export interface BuildStatsOptions {
-  /** How many recent ranked matches to analyze. */
   matchCount?: number;
-  /**
-   * Cap unique opponents to look up for average rank (rate-limit friendly).
-   * Set to 0 to skip opponent rank calculation.
-   */
   maxOpponentLookups?: number;
+  queue: QueueConfig;
 }
 
 export async function buildPlayerRecentStats(
@@ -63,26 +63,41 @@ export async function buildPlayerRecentStats(
   region: RegionConfig,
   gameName: string,
   tagLine: string,
-  options: BuildStatsOptions = {},
+  options: BuildStatsOptions,
 ): Promise<RecentStats> {
   const matchCount = options.matchCount ?? 12;
-  const maxOpponentLookups = options.maxOpponentLookups ?? 20;
+  const queue = options.queue;
+  const maxOpponentLookups = queue.opponentElo
+    ? (options.maxOpponentLookups ?? 20)
+    : 0;
 
   const account = await client.getAccountByRiotId(region, gameName, tagLine);
   const summoner = await client.getSummonerByPuuid(region, account.puuid);
 
-  const leagues = await client.getLeagueEntriesByPuuid(region, account.puuid);
-  const solo = leagues.find((e) => e.queueType === "RANKED_SOLO_5x5");
-
-  const matchIds = await client.getMatchIdsByPuuid(region, account.puuid, {
-    count: matchCount,
-    queue: QUEUE_RANKED_SOLO,
-  });
-
-  const matches: MatchDto[] = [];
-  for (const id of matchIds) {
-    matches.push(await client.getMatch(region, id));
+  let modeRank: RankSnapshot | null = null;
+  if (queue.leagueQueueType) {
+    const leagues = await client.getLeagueEntriesByPuuid(region, account.puuid);
+    const entry = leagues.find((e) => e.queueType === queue.leagueQueueType);
+    if (entry) {
+      modeRank = {
+        tier: entry.tier,
+        division: entry.rank,
+        lp: entry.leaguePoints,
+        wins: entry.wins,
+        losses: entry.losses,
+        hotStreak: Boolean(entry.hotStreak),
+        formatted: formatRank(entry.tier, entry.rank, entry.leaguePoints),
+      };
+    }
   }
+
+  const matches = await fetchMatchesForQueue(
+    client,
+    region,
+    account.puuid,
+    queue,
+    matchCount,
+  );
 
   const selfGames = matches
     .map((m) => m.info.participants.find((p) => p.puuid === account.puuid))
@@ -108,6 +123,7 @@ export async function buildPlayerRecentStats(
       account.puuid,
       matches,
       maxOpponentLookups,
+      queue.leagueQueueType ?? "RANKED_SOLO_5x5",
     );
     avgOpponentRank = result.label;
     avgOpponentTier = result.tier;
@@ -117,19 +133,10 @@ export async function buildPlayerRecentStats(
   return {
     riotId: `${account.gameName}#${account.tagLine}`,
     region,
+    queue,
     level: summoner.summonerLevel,
     profileIconId: summoner.profileIconId,
-    soloRank: solo
-      ? {
-          tier: solo.tier,
-          division: solo.rank,
-          lp: solo.leaguePoints,
-          wins: solo.wins,
-          losses: solo.losses,
-          hotStreak: Boolean(solo.hotStreak),
-          formatted: formatRank(solo.tier, solo.rank, solo.leaguePoints),
-        }
-      : null,
+    modeRank,
     sampleSize: selfGames.length,
     wins,
     losses,
@@ -141,6 +148,48 @@ export async function buildPlayerRecentStats(
     avgOpponentTier,
     opponentsSampled,
   };
+}
+
+export async function fetchMatchesForQueue(
+  client: RiotClient,
+  region: RegionConfig,
+  puuid: string,
+  queue: QueueConfig,
+  count: number,
+): Promise<MatchDto[]> {
+  const multi = queue.queueIds && queue.queueIds.length > 1;
+
+  if (!multi) {
+    const matchIds = await client.getMatchIdsByPuuid(region, puuid, {
+      count,
+      queue: queue.queueId,
+    });
+    const matches: MatchDto[] = [];
+    for (const id of matchIds) {
+      matches.push(await client.getMatch(region, id));
+    }
+    return matches;
+  }
+
+  // Fetch a wider window and filter to the mode's queue ids
+  const fetchCount = Math.min(100, Math.max(count * 3, count + 10));
+  const matchIds = await client.getMatchIdsByPuuid(region, puuid, {
+    count: fetchCount,
+    type: queue.matchType,
+  });
+
+  const allowed = new Set(queue.queueIds);
+  const matches: MatchDto[] = [];
+
+  for (const id of matchIds) {
+    if (matches.length >= count) break;
+    const match = await client.getMatch(region, id);
+    if (allowed.has(match.info.queueId)) {
+      matches.push(match);
+    }
+  }
+
+  return matches;
 }
 
 function averageKda(games: MatchParticipant[]): number {
@@ -191,6 +240,7 @@ async function averageOpponentRank(
   selfPuuid: string,
   matches: MatchDto[],
   maxLookups: number,
+  preferredQueue: string,
 ): Promise<{ label: string | null; tier: string | null; sampled: number }> {
   const opponents = new Set<string>();
 
@@ -208,7 +258,7 @@ async function averageOpponentRank(
   for (const puuid of sample) {
     try {
       const entries = await client.getLeagueEntriesByPuuid(region, puuid);
-      const solo = pickBestSoloEntry(entries);
+      const solo = pickBestEntry(entries, preferredQueue);
       if (solo) {
         scores.push(rankScore(solo.tier, solo.rank, solo.leaguePoints));
       }
@@ -230,9 +280,18 @@ async function averageOpponentRank(
   };
 }
 
-function pickBestSoloEntry(entries: LeagueEntry[]): LeagueEntry | undefined {
+function pickBestEntry(
+  entries: LeagueEntry[],
+  preferredQueue: string,
+): LeagueEntry | undefined {
   return (
+    entries.find((e) => e.queueType === preferredQueue) ??
     entries.find((e) => e.queueType === "RANKED_SOLO_5x5") ??
     entries.find((e) => e.queueType === "RANKED_FLEX_SR")
   );
+}
+
+/** Resolve default solo queue without circular imports in old call sites. */
+export function defaultSoloQueue(): QueueConfig {
+  return QUEUES[0]!;
 }

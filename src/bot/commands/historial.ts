@@ -4,17 +4,17 @@ import {
   regionDiscordChoices,
   resolveRegion,
 } from "../../config/regions.js";
-import { buildPlayerRecentStats } from "../../stats/player.js";
+import { buildMatchHistory } from "../../stats/history.js";
 import { parseRiotId } from "../../utils/riot-id.js";
-import { buildStatsEmbed } from "../embeds/stats-embed.js";
+import { buildHistoryEmbed } from "../embeds/history-embed.js";
 import { formatBotError } from "../format-error.js";
 import type { BotCommand } from "./types.js";
 
-export const statsCommand: BotCommand = {
+export const historialCommand: BotCommand = {
   data: new SlashCommandBuilder()
-    .setName("stats")
+    .setName("historial")
     .setDescription(
-      "Resumen (WR, KDA, champs) de un modo: Solo, Flex, ARAM, Arena…",
+      "Lista partida a partida: Solo, Flex, ARAM, Normales, Arena…",
     )
     .addStringOption((opt) =>
       opt
@@ -32,10 +32,10 @@ export const statsCommand: BotCommand = {
     .addIntegerOption((opt) =>
       opt
         .setName("partidas")
-        .setDescription("Cuántas partidas recientes usar (1–20). Default: 12")
+        .setDescription("Cuántas partidas listar (1–15). Default: 10")
         .setRequired(false)
         .setMinValue(1)
-        .setMaxValue(20),
+        .setMaxValue(15),
     )
     .addStringOption((opt) =>
       opt
@@ -51,7 +51,7 @@ export const statsCommand: BotCommand = {
     const riotIdRaw = interaction.options.getString("riot_id", true);
     const regionRaw = interaction.options.getString("region");
     const modoRaw = interaction.options.getString("modo");
-    const matchCount = interaction.options.getInteger("partidas") ?? 12;
+    const matchCount = interaction.options.getInteger("partidas") ?? 10;
 
     try {
       const { gameName, tagLine } = parseRiotId(riotIdRaw);
@@ -60,30 +60,23 @@ export const statsCommand: BotCommand = {
         : ctx.defaultRegion;
       const queue = resolveQueue(modoRaw);
 
-      const maxOpponentLookups = queue.opponentElo
-        ? Math.min(20, Math.max(8, matchCount + 3))
-        : 0;
-
-      const stats = await buildPlayerRecentStats(
+      const history = await buildMatchHistory(
         ctx.riot,
         region,
         gameName,
         tagLine,
-        {
-          matchCount,
-          maxOpponentLookups,
-          queue,
-        },
+        queue,
+        matchCount,
       );
 
-      if (stats.sampleSize === 0) {
+      if (history.matches.length === 0) {
         await interaction.editReply({
-          content: `No encontré partidas recientes de **${queue.label}** para **${stats.riotId}** (${stats.region.label}).`,
+          content: `No encontré partidas de **${queue.label}** para **${history.riotId}** (${history.region.label}).`,
         });
         return;
       }
 
-      const embed = await buildStatsEmbed(stats);
+      const embed = await buildHistoryEmbed(history);
       await interaction.editReply({ embeds: [embed] });
     } catch (err) {
       await interaction.editReply({ content: formatBotError(err) });

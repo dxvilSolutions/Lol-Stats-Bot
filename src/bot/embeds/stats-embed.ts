@@ -18,18 +18,21 @@ import {
 
 export async function buildStatsEmbed(stats: RecentStats): Promise<EmbedBuilder> {
   const version = await getDDragonVersion();
-  const tier = stats.soloRank?.tier ?? "unranked";
+  const queue = stats.queue;
+  const tier = stats.modeRank?.tier ?? "unranked";
   const kda = stats.avgKda;
 
-  const rankLine = stats.soloRank
-    ? `**${stats.soloRank.formatted}**${stats.soloRank.hotStreak ? " · 🔥 Hot streak" : ""}`
-    : "**Unranked** en Solo/Duo";
+  const rankLine = stats.modeRank
+    ? `**${stats.modeRank.formatted}**${stats.modeRank.hotStreak ? " · 🔥 Hot streak" : ""}`
+    : queue.ranked
+      ? `**Unranked** en ${queue.shortLabel}`
+      : `${queue.emoji} **${queue.label}** · sin ladder`;
 
   const seasonWr =
-    stats.soloRank && stats.soloRank.wins + stats.soloRank.losses > 0
+    stats.modeRank && stats.modeRank.wins + stats.modeRank.losses > 0
       ? Math.round(
-          (stats.soloRank.wins /
-            (stats.soloRank.wins + stats.soloRank.losses)) *
+          (stats.modeRank.wins /
+            (stats.modeRank.wins + stats.modeRank.losses)) *
             1000,
         ) / 10
       : null;
@@ -41,9 +44,42 @@ export async function buildStatsEmbed(stats: RecentStats): Promise<EmbedBuilder>
     })
     .join("\n");
 
-  const opponentLine = stats.avgOpponentRank
-    ? `~**${stats.avgOpponentRank}** · sample ${stats.opponentsSampled} rivales`
-    : "No disponible";
+  const fields = [
+    {
+      name: `${wrEmoji(stats.winrate)} Winrate · ${winrateLabel(stats.winrate)}`,
+      value: [
+        `**${stats.winrate}%** (${stats.wins}W – ${stats.losses}L)`,
+        `\`${progressBar(stats.winrate)}\``,
+      ].join("\n"),
+      inline: true,
+    },
+    {
+      name: `${kdaEmoji(kda)} KDA · ${kdaLabel(kda)}`,
+      value: `**${stats.avgKdaText}**\npromedio en el sample`,
+      inline: true,
+    },
+    {
+      name: "🎯 Sample",
+      value: `**${stats.sampleSize}** · ${queue.shortLabel}`,
+      inline: true,
+    },
+  ];
+
+  if (queue.opponentElo) {
+    fields.push({
+      name: "⚔️ ELO medio de rivales",
+      value: stats.avgOpponentRank
+        ? `~**${stats.avgOpponentRank}** · sample ${stats.opponentsSampled} rivales`
+        : "No disponible",
+      inline: false,
+    });
+  }
+
+  fields.push({
+    name: "🗡️ Campeones más usados",
+    value: champs || "—",
+    inline: false,
+  });
 
   const embed = new EmbedBuilder()
     .setColor(colorFromWinrate(stats.winrate))
@@ -51,53 +87,35 @@ export async function buildStatsEmbed(stats: RecentStats): Promise<EmbedBuilder>
       name: stats.riotId,
       iconURL: profileIconUrl(version, stats.profileIconId),
     })
-    .setTitle(`${stats.region.label} · Nivel ${stats.level}`)
+    .setTitle(
+      `${queue.emoji} ${queue.shortLabel} · ${stats.region.label} · Nv. ${stats.level}`,
+    )
     .setDescription(
       [
         rankLine,
-        seasonWr != null && stats.soloRank
-          ? `Temporada Solo/Duo: **${stats.soloRank.wins}W / ${stats.soloRank.losses}L** (${seasonWr}% WR)`
+        seasonWr != null && stats.modeRank
+          ? `Temporada ${queue.shortLabel}: **${stats.modeRank.wins}W / ${stats.modeRank.losses}L** (${seasonWr}% WR)`
           : null,
       ]
         .filter(Boolean)
         .join("\n"),
     )
-    .setThumbnail(rankedEmblemUrl(tier))
-    .addFields(
-      {
-        name: `${wrEmoji(stats.winrate)} Winrate · ${winrateLabel(stats.winrate)}`,
-        value: [
-          `**${stats.winrate}%** (${stats.wins}W – ${stats.losses}L)`,
-          `\`${progressBar(stats.winrate)}\``,
-        ].join("\n"),
-        inline: true,
-      },
-      {
-        name: `${kdaEmoji(kda)} KDA · ${kdaLabel(kda)}`,
-        value: `**${stats.avgKdaText}**\npromedio en el sample`,
-        inline: true,
-      },
-      {
-        name: "🎯 Sample",
-        value: `**${stats.sampleSize}** ranked Solo`,
-        inline: true,
-      },
-      {
-        name: "⚔️ ELO medio de rivales",
-        value: opponentLine,
-        inline: false,
-      },
-      {
-        name: "🗡️ Campeones más usados",
-        value: champs || "—",
-        inline: false,
-      },
-    )
+    .addFields(fields)
     .setFooter({
-      text: `${stats.region.label} · Riot API · rivales ≈ rank actual`,
-      iconURL: rankedMiniCrestUrl(stats.avgOpponentTier ?? tier),
+      text: queue.opponentElo
+        ? `${stats.region.label} · Riot API · rivales ≈ rank actual`
+        : `${stats.region.label} · Riot API · ${queue.label}`,
+      iconURL: queue.ranked
+        ? rankedMiniCrestUrl(stats.avgOpponentTier ?? tier)
+        : profileIconUrl(version, stats.profileIconId),
     })
     .setTimestamp();
+
+  if (queue.ranked) {
+    embed.setThumbnail(rankedEmblemUrl(tier));
+  } else {
+    embed.setThumbnail(profileIconUrl(version, stats.profileIconId));
+  }
 
   const topChamp = stats.topChampions[0]?.champion;
   if (topChamp) {
