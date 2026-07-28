@@ -7,15 +7,23 @@ interface GuildSettingsFile {
   guilds: Record<string, { locale?: Locale }>;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const SETTINGS_PATH = path.join(DATA_DIR, "guild-settings.json");
+function dataDir(): string {
+  const fromEnv = process.env.DATA_DIR?.trim();
+  return fromEnv && fromEnv.length > 0
+    ? path.resolve(fromEnv)
+    : path.join(process.cwd(), "data");
+}
+
+function settingsPath(): string {
+  return path.join(dataDir(), "guild-settings.json");
+}
 
 let cache: GuildSettingsFile | null = null;
 
 async function load(): Promise<GuildSettingsFile> {
   if (cache) return cache;
   try {
-    const raw = await readFile(SETTINGS_PATH, "utf8");
+    const raw = await readFile(settingsPath(), "utf8");
     const parsed = JSON.parse(raw) as GuildSettingsFile;
     cache = { guilds: parsed.guilds ?? {} };
   } catch {
@@ -25,9 +33,20 @@ async function load(): Promise<GuildSettingsFile> {
 }
 
 async function save(data: GuildSettingsFile): Promise<void> {
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(SETTINGS_PATH, JSON.stringify(data, null, 2), "utf8");
+  const dir = dataDir();
+  await mkdir(dir, { recursive: true });
+  await writeFile(settingsPath(), JSON.stringify(data, null, 2), "utf8");
   cache = data;
+}
+
+/** Ensure the data directory exists and log where settings live. */
+export async function initGuildSettingsStore(): Promise<string> {
+  const dir = dataDir();
+  await mkdir(dir, { recursive: true });
+  // Warm cache from disk if present
+  await load();
+  console.log(`Guild settings path: ${settingsPath()}`);
+  return settingsPath();
 }
 
 export async function getGuildLocale(

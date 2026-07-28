@@ -12,6 +12,9 @@ RUN npm prune --omit=dev
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# Persist guild language (and future settings) on a Railway Volume mounted here
+ENV DATA_DIR=/data
+RUN mkdir -p /data
 COPY package.json package-lock.json* ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

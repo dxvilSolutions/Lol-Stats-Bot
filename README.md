@@ -93,8 +93,11 @@ Guía detallada: ver sección más abajo en este README o el flujo Railway/Rende
 
 1. Sube el repo a GitHub (sin `.env`).
 2. Railway → New Project → Deploy from GitHub.
-3. Variables: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `RIOT_API_KEY`, `DEFAULT_REGION=lan` (sin Guild ID).
-4. Build: `npm install && npm run build` · Start: `npm start`.
+3. Variables: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `RIOT_API_KEY`, `DEFAULT_REGION=lan`, `DEFAULT_LANGUAGE=es`, `DATA_DIR=/data`.
+4. **Volume (importante):** añade un Volume al servicio con mount path `/data` para que el idioma por servidor sobreviva a reinicios y redeploys.
+5. Build: `npm install && npm run build` · Start: `npm start`.
+
+Comandos de historial: `/historial` (ES) y `/history` (EN). Idioma del servidor: `/language`.
 
 ### Render (resumen)
 
