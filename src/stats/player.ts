@@ -157,39 +157,90 @@ export async function fetchMatchesForQueue(
   queue: QueueConfig,
   count: number,
 ): Promise<MatchDto[]> {
-  const multi = queue.queueIds && queue.queueIds.length > 1;
-
-  if (!multi) {
-    const matchIds = await client.getMatchIdsByPuuid(region, puuid, {
-      count,
-      queue: queue.queueId,
-    });
-    const matches: MatchDto[] = [];
-    for (const id of matchIds) {
-      matches.push(await client.getMatch(region, id));
-    }
-    return matches;
-  }
-
-  // Fetch a wider window and filter to the mode's queue ids
-  const fetchCount = Math.min(100, Math.max(count * 3, count + 10));
-  const matchIds = await client.getMatchIdsByPuuid(region, puuid, {
-    count: fetchCount,
-    type: queue.matchType,
-  });
-
-  const allowed = new Set(queue.queueIds);
+  const matchIds = await collectMatchIds(client, region, puuid, queue, count);
   const matches: MatchDto[] = [];
+  let blocked = 0;
 
   for (const id of matchIds) {
     if (matches.length >= count) break;
-    const match = await client.getMatch(region, id);
-    if (allowed.has(match.info.queueId)) {
+    try {
+      const match = await client.getMatch(region, id);
+      if (queue.queueIds && queue.queueIds.length > 1) {
+        if (!queue.queueIds.includes(match.info.queueId)) continue;
+      }
       matches.push(match);
+    } catch (err) {
+      if (err instanceof RiotApiError && (err.status === 403 || err.status === 404)) {
+        blocked += 1;
+        continue;
+      }
+      throw err;
     }
   }
 
+  if (
+    matches.length === 0 &&
+    blocked > 0 &&
+    (queue.detailsOftenPrivate || blocked === matchIds.length)
+  ) {
+    throw new ModeDetailsPrivateError(queue.alias);
+  }
+
   return matches;
+}
+
+async function collectMatchIds(
+  client: RiotClient,
+  region: RegionConfig,
+  puuid: string,
+  queue: QueueConfig,
+  count: number,
+): Promise<string[]> {
+  const multi = queue.queueIds && queue.queueIds.length > 1;
+
+  if (!multi) {
+    return client.getMatchIdsByPuuid(region, puuid, {
+      count,
+      queue: queue.queueId,
+    });
+  }
+
+  if (queue.matchType) {
+    return client.getMatchIdsByPuuid(region, puuid, {
+      count: Math.min(100, Math.max(count * 3, count + 10)),
+      type: queue.matchType,
+    });
+  }
+
+  // Multiple queue IDs without a match type (e.g. ARAM: Mayhem variants)
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  const perQueue = Math.min(20, Math.max(count, Math.ceil(count / 2) + 2));
+
+  for (const qid of queue.queueIds!) {
+    const batch = await client.getMatchIdsByPuuid(region, puuid, {
+      count: perQueue,
+      queue: qid,
+    });
+    for (const id of batch) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+
+  return ids;
+}
+
+/** Thrown when Riot blocks match detail payloads for a mode (often 403). */
+export class ModeDetailsPrivateError extends Error {
+  readonly alias: string;
+
+  constructor(alias: string) {
+    super(`Mode details private: ${alias}`);
+    this.name = "ModeDetailsPrivateError";
+    this.alias = alias;
+  }
 }
 
 function averageKda(games: MatchParticipant[]): number {

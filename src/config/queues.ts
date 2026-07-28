@@ -10,11 +10,13 @@ export type QueueAlias =
   | "solo"
   | "flex"
   | "aram"
+  | "mayhem"
   | "normal"
   | "draft"
   | "blind"
   | "quickplay"
   | "arena"
+  | "arena3"
   | "urf"
   | "ofa"
   | "nexus";
@@ -32,6 +34,10 @@ export interface QueueConfig {
   leagueQueueType?: "RANKED_SOLO_5x5" | "RANKED_FLEX_SR";
   opponentElo: boolean;
   emoji: string;
+  /**
+   * Riot may list match IDs but block match details (403), e.g. ARAM: Mayhem.
+   */
+  detailsOftenPrivate?: boolean;
 }
 
 export const QUEUES: readonly QueueConfig[] = [
@@ -66,6 +72,18 @@ export const QUEUES: readonly QueueConfig[] = [
     ranked: false,
     opponentElo: false,
     emoji: "❄️",
+  },
+  {
+    alias: "mayhem",
+    label: "ARAM: Mayhem",
+    shortLabel: "Mayhem",
+    description: "ARAM: Mayhem / Chaos",
+    queueId: 2400,
+    queueIds: [2400, 2401, 2403, 2405],
+    ranked: false,
+    opponentElo: false,
+    emoji: "🌪️",
+    detailsOftenPrivate: true,
   },
   {
     alias: "normal",
@@ -111,10 +129,20 @@ export const QUEUES: readonly QueueConfig[] = [
   },
   {
     alias: "arena",
-    label: "Arena",
-    shortLabel: "Arena",
+    label: "Arena 2v2",
+    shortLabel: "Arena 2v2",
     description: "Arena 2v2v2v2",
     queueId: 1700,
+    ranked: false,
+    opponentElo: false,
+    emoji: "🏟️",
+  },
+  {
+    alias: "arena3",
+    label: "Arena 3v3",
+    shortLabel: "Arena 3v3",
+    description: "Arena 3x6 (3 players per team)",
+    queueId: 1750,
     ranked: false,
     opponentElo: false,
     emoji: "🏟️",
