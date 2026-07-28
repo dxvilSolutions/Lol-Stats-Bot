@@ -4,6 +4,13 @@ import {
   getDDragonVersion,
   profileIconUrl,
 } from "../../assets/cdn.js";
+import {
+  labelForQueueId,
+  queueLabel,
+  queueShortLabel,
+} from "../../config/queues.js";
+import type { Locale } from "../../i18n/locales.js";
+import { t } from "../../i18n/locales.js";
 import type { MatchHistory } from "../../stats/history.js";
 import { colorFromWinrate, progressBar, wrEmoji } from "./style.js";
 
@@ -15,34 +22,41 @@ function formatDuration(sec: number): string {
 
 export async function buildHistoryEmbed(
   history: MatchHistory,
+  locale: Locale,
 ): Promise<EmbedBuilder> {
   const version = await getDDragonVersion();
   const queue = history.queue;
+  const mode = queueShortLabel(locale, queue);
+  const modeFull = queueLabel(locale, queue);
 
   const lines = history.matches.map((m, i) => {
     const result = m.win ? "✅" : "❌";
     const when = `<t:${Math.floor(m.createdAt / 1000)}:R>`;
-    const place =
-      m.placement != null ? ` · #${m.placement}` : "";
+    const place = m.placement != null ? ` · #${m.placement}` : "";
+    const qLabel = labelForQueueId(m.queueId, locale);
     const subMode =
-      queue.alias === "normal" && m.queueLabel !== queue.shortLabel
-        ? ` · ${m.queueLabel}`
-        : "";
+      queue.alias === "normal" && qLabel !== mode ? ` · ${qLabel}` : "";
 
-    return (
-      `**${i + 1}.** ${result} **${m.champion}**${place}${subMode}\n` +
-      `└ ${m.kills}/${m.deaths}/${m.assists} · KDA ${m.kda} · ${formatDuration(m.durationSec)} · CS ${m.cs} · ${when}`
-    );
+    return t(locale, "history.line", {
+      n: i + 1,
+      result,
+      champion: m.champion,
+      place,
+      subMode,
+      kills: m.kills,
+      deaths: m.deaths,
+      assists: m.assists,
+      kda: m.kda,
+      duration: formatDuration(m.durationSec),
+      cs: m.cs,
+      when,
+    });
   });
 
-  // Discord embed field value max ~1024; keep lists compact
   let body = lines.join("\n");
   if (body.length > 1000) {
-    body = `${lines.slice(0, Math.max(1, lines.length - 1)).join("\n")}\n…`;
-    if (body.length > 1000) {
-      body = lines.slice(0, 8).join("\n");
-      if (body.length > 1000) body = `${body.slice(0, 990)}…`;
-    }
+    body = lines.slice(0, 8).join("\n");
+    if (body.length > 1000) body = `${body.slice(0, 990)}…`;
   }
 
   const embed = new EmbedBuilder()
@@ -52,22 +66,35 @@ export async function buildHistoryEmbed(
       iconURL: profileIconUrl(version, history.profileIconId),
     })
     .setTitle(
-      `${queue.emoji} Historial · ${queue.shortLabel} · ${history.region.label}`,
+      t(locale, "history.title", {
+        emoji: queue.emoji,
+        mode,
+        region: history.region.label,
+      }),
     )
     .setDescription(
       [
-        `${wrEmoji(history.winrate)} **${history.winrate}%** WR · ${history.wins}W – ${history.losses}L · ${history.matches.length} partidas`,
+        t(locale, "history.summary", {
+          emoji: wrEmoji(history.winrate),
+          wr: history.winrate,
+          wins: history.wins,
+          losses: history.losses,
+          count: history.matches.length,
+        }),
         `\`${progressBar(history.winrate)}\``,
       ].join("\n"),
     )
     .addFields({
-      name: "Partidas recientes",
-      value: body || "Sin partidas",
+      name: t(locale, "history.field"),
+      value: body || t(locale, "history.empty"),
       inline: false,
     })
     .setThumbnail(profileIconUrl(version, history.profileIconId))
     .setFooter({
-      text: `${history.region.label} · ${queue.label} · Riot API`,
+      text: t(locale, "history.footer", {
+        region: history.region.label,
+        mode: modeFull,
+      }),
     })
     .setTimestamp();
 

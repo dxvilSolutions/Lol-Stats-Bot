@@ -6,6 +6,12 @@ import {
   rankedEmblemUrl,
   rankedMiniCrestUrl,
 } from "../../assets/cdn.js";
+import {
+  queueLabel,
+  queueShortLabel,
+} from "../../config/queues.js";
+import type { Locale } from "../../i18n/locales.js";
+import { t } from "../../i18n/locales.js";
 import type { RecentStats } from "../../stats/player.js";
 import {
   colorFromWinrate,
@@ -16,17 +22,24 @@ import {
   wrEmoji,
 } from "./style.js";
 
-export async function buildStatsEmbed(stats: RecentStats): Promise<EmbedBuilder> {
+export async function buildStatsEmbed(
+  stats: RecentStats,
+  locale: Locale,
+): Promise<EmbedBuilder> {
   const version = await getDDragonVersion();
   const queue = stats.queue;
+  const mode = queueShortLabel(locale, queue);
+  const modeFull = queueLabel(locale, queue);
   const tier = stats.modeRank?.tier ?? "unranked";
   const kda = stats.avgKda;
 
   const rankLine = stats.modeRank
-    ? `**${stats.modeRank.formatted}**${stats.modeRank.hotStreak ? " · 🔥 Hot streak" : ""}`
+    ? `**${stats.modeRank.formatted}**${
+        stats.modeRank.hotStreak ? t(locale, "stats.hot_streak") : ""
+      }`
     : queue.ranked
-      ? `**Unranked** en ${queue.shortLabel}`
-      : `${queue.emoji} **${queue.label}** · sin ladder`;
+      ? t(locale, "stats.unranked", { mode })
+      : t(locale, "stats.no_ladder", { emoji: queue.emoji, mode: modeFull });
 
   const seasonWr =
     stats.modeRank && stats.modeRank.wins + stats.modeRank.losses > 0
@@ -37,46 +50,68 @@ export async function buildStatsEmbed(stats: RecentStats): Promise<EmbedBuilder>
         ) / 10
       : null;
 
+  const medals = ["🥇", "🥈", "🥉"];
   const champs = stats.topChampions
-    .map((c, i) => {
-      const medal = ["🥇", "🥈", "🥉"][i] ?? "•";
-      return `${medal} **${c.champion}** · ${c.games}p · ${c.winrate}% WR · KDA ${c.avgKda}`;
-    })
+    .map((c, i) =>
+      t(locale, "stats.champ_line", {
+        medal: medals[i] ?? "•",
+        champion: c.champion,
+        games: c.games,
+        wr: c.winrate,
+        kda: c.avgKda,
+      }),
+    )
     .join("\n");
 
   const fields = [
     {
-      name: `${wrEmoji(stats.winrate)} Winrate · ${winrateLabel(stats.winrate)}`,
+      name: t(locale, "stats.wr_field", {
+        emoji: wrEmoji(stats.winrate),
+        label: winrateLabel(stats.winrate, locale),
+      }),
       value: [
-        `**${stats.winrate}%** (${stats.wins}W – ${stats.losses}L)`,
+        t(locale, "stats.wr_value", {
+          wr: stats.winrate,
+          wins: stats.wins,
+          losses: stats.losses,
+        }),
         `\`${progressBar(stats.winrate)}\``,
       ].join("\n"),
       inline: true,
     },
     {
-      name: `${kdaEmoji(kda)} KDA · ${kdaLabel(kda)}`,
-      value: `**${stats.avgKdaText}**\npromedio en el sample`,
+      name: t(locale, "stats.kda_field", {
+        emoji: kdaEmoji(kda),
+        label: kdaLabel(kda, locale),
+      }),
+      value: t(locale, "stats.kda_value", { kda: stats.avgKdaText }),
       inline: true,
     },
     {
-      name: "🎯 Sample",
-      value: `**${stats.sampleSize}** · ${queue.shortLabel}`,
+      name: t(locale, "stats.sample_field"),
+      value: t(locale, "stats.sample_value", {
+        count: stats.sampleSize,
+        mode,
+      }),
       inline: true,
     },
   ];
 
   if (queue.opponentElo) {
     fields.push({
-      name: "⚔️ ELO medio de rivales",
+      name: t(locale, "stats.opp_field"),
       value: stats.avgOpponentRank
-        ? `~**${stats.avgOpponentRank}** · sample ${stats.opponentsSampled} rivales`
-        : "No disponible",
+        ? t(locale, "stats.opp_value", {
+            rank: stats.avgOpponentRank,
+            n: stats.opponentsSampled,
+          })
+        : t(locale, "stats.opp_na"),
       inline: false,
     });
   }
 
   fields.push({
-    name: "🗡️ Campeones más usados",
+    name: t(locale, "stats.champs_field"),
     value: champs || "—",
     inline: false,
   });
@@ -88,13 +123,23 @@ export async function buildStatsEmbed(stats: RecentStats): Promise<EmbedBuilder>
       iconURL: profileIconUrl(version, stats.profileIconId),
     })
     .setTitle(
-      `${queue.emoji} ${queue.shortLabel} · ${stats.region.label} · Nv. ${stats.level}`,
+      t(locale, "stats.title", {
+        emoji: queue.emoji,
+        mode,
+        region: stats.region.label,
+        level: stats.level,
+      }),
     )
     .setDescription(
       [
         rankLine,
         seasonWr != null && stats.modeRank
-          ? `Temporada ${queue.shortLabel}: **${stats.modeRank.wins}W / ${stats.modeRank.losses}L** (${seasonWr}% WR)`
+          ? t(locale, "stats.season", {
+              mode,
+              wins: stats.modeRank.wins,
+              losses: stats.modeRank.losses,
+              wr: seasonWr,
+            })
           : null,
       ]
         .filter(Boolean)
@@ -103,8 +148,11 @@ export async function buildStatsEmbed(stats: RecentStats): Promise<EmbedBuilder>
     .addFields(fields)
     .setFooter({
       text: queue.opponentElo
-        ? `${stats.region.label} · Riot API · rivales ≈ rank actual`
-        : `${stats.region.label} · Riot API · ${queue.label}`,
+        ? t(locale, "stats.footer_ranked", { region: stats.region.label })
+        : t(locale, "stats.footer", {
+            region: stats.region.label,
+            mode: modeFull,
+          }),
       iconURL: queue.ranked
         ? rankedMiniCrestUrl(stats.avgOpponentTier ?? tier)
         : profileIconUrl(version, stats.profileIconId),

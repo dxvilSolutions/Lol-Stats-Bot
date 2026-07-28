@@ -1,3 +1,6 @@
+import type { Locale } from "../i18n/locales.js";
+import { t } from "../i18n/locales.js";
+
 /**
  * League queue / mode presets for Match-v5 filters.
  * @see https://static.developer.riotgames.com/docs/lol/queues.json
@@ -18,21 +21,15 @@ export type QueueAlias =
 
 export interface QueueConfig {
   alias: QueueAlias;
+  /** Fallback English-ish label (prefer localized helpers). */
   label: string;
-  /** Short label for embed titles */
   shortLabel: string;
   description: string;
-  /** Primary Riot queue id (used when `queueIds` has one entry). */
   queueId: number;
-  /** If set, fetch without a single queue and keep matches in this set. */
   queueIds?: number[];
-  /** Match-v5 `type` filter when not using a single queue id. */
   matchType?: "ranked" | "normal" | "tourney" | "tutorial";
-  /** Whether this mode has a ranked ladder entry. */
   ranked: boolean;
-  /** League-v4 queueType to show season rank, if any. */
   leagueQueueType?: "RANKED_SOLO_5x5" | "RANKED_FLEX_SR";
-  /** Lookup opponent ranks (rate-limit heavy; ranked only). */
   opponentElo: boolean;
   emoji: string;
 }
@@ -42,7 +39,7 @@ export const QUEUES: readonly QueueConfig[] = [
     alias: "solo",
     label: "Ranked Solo/Duo",
     shortLabel: "Solo/Duo",
-    description: "Clasificatoria Solo/Duo",
+    description: "Ranked Solo/Duo",
     queueId: 420,
     ranked: true,
     leagueQueueType: "RANKED_SOLO_5x5",
@@ -53,7 +50,7 @@ export const QUEUES: readonly QueueConfig[] = [
     alias: "flex",
     label: "Ranked Flex",
     shortLabel: "Flex",
-    description: "Clasificatoria Flexible",
+    description: "Ranked Flex",
     queueId: 440,
     ranked: true,
     leagueQueueType: "RANKED_FLEX_SR",
@@ -72,9 +69,9 @@ export const QUEUES: readonly QueueConfig[] = [
   },
   {
     alias: "normal",
-    label: "Normales",
+    label: "Normals",
     shortLabel: "Normal",
-    description: "Draft, Blind y Quickplay",
+    description: "Draft, Blind and Quickplay",
     queueId: 490,
     queueIds: [400, 430, 490],
     matchType: "normal",
@@ -86,7 +83,7 @@ export const QUEUES: readonly QueueConfig[] = [
     alias: "draft",
     label: "Normal Draft",
     shortLabel: "Draft",
-    description: "Partidas normales (draft)",
+    description: "Normal draft",
     queueId: 400,
     ranked: false,
     opponentElo: false,
@@ -96,7 +93,7 @@ export const QUEUES: readonly QueueConfig[] = [
     alias: "blind",
     label: "Normal Blind",
     shortLabel: "Blind",
-    description: "Partidas normales (blind pick)",
+    description: "Normal blind pick",
     queueId: 430,
     ranked: false,
     opponentElo: false,
@@ -106,7 +103,7 @@ export const QUEUES: readonly QueueConfig[] = [
     alias: "quickplay",
     label: "Quickplay",
     shortLabel: "Quickplay",
-    description: "Cola rápida (normales)",
+    description: "Quickplay normals",
     queueId: 490,
     ranked: false,
     opponentElo: false,
@@ -136,7 +133,7 @@ export const QUEUES: readonly QueueConfig[] = [
     alias: "ofa",
     label: "One for All",
     shortLabel: "OFA",
-    description: "Uno para todos",
+    description: "One for All",
     queueId: 1020,
     ranked: false,
     opponentElo: false,
@@ -156,32 +153,53 @@ export const QUEUES: readonly QueueConfig[] = [
 
 const byAlias = new Map(QUEUES.map((q) => [q.alias, q]));
 
-export function resolveQueue(input?: string | null): QueueConfig {
+export function queueLabel(locale: Locale, queue: QueueConfig): string {
+  return t(locale, `queue.${queue.alias}`);
+}
+
+export function queueShortLabel(locale: Locale, queue: QueueConfig): string {
+  return t(locale, `queue.${queue.alias}.short`);
+}
+
+export function resolveQueue(
+  input?: string | null,
+  locale: Locale = "en",
+): QueueConfig {
   const key = (input ?? "solo").trim().toLowerCase();
   const queue = byAlias.get(key as QueueAlias);
   if (!queue) {
     const known = QUEUES.map((q) => q.alias).join(", ");
-    throw new Error(`Modo desconocido: "${input}". Usa uno de: ${known}`);
+    throw new Error(
+      t(locale, "error.unknown_mode", { input: String(input), known }),
+    );
   }
   return queue;
 }
 
-export function queueDiscordChoices(): { name: string; value: string }[] {
+export function queueDiscordChoices(): {
+  name: string;
+  name_localizations: Record<string, string>;
+  value: string;
+}[] {
   return QUEUES.map((q) => ({
-    name: `${q.emoji} ${q.label}`,
+    name: `${q.emoji} ${t("en", `queue.${q.alias}`)}`,
+    name_localizations: {
+      "en-US": `${q.emoji} ${t("en", `queue.${q.alias}`)}`,
+      "es-ES": `${q.emoji} ${t("es", `queue.${q.alias}`)}`,
+    },
     value: q.alias,
   }));
 }
 
-/** Human label for a raw queue id (history lines). */
-export function labelForQueueId(queueId: number): string {
+export function labelForQueueId(queueId: number, locale: Locale = "en"): string {
   const known = QUEUES.find(
     (q) => q.queueId === queueId || q.queueIds?.includes(queueId),
   );
   if (known?.queueIds && known.queueIds.length > 1) {
-    if (queueId === 400) return "Draft";
-    if (queueId === 430) return "Blind";
-    if (queueId === 490) return "Quickplay";
+    if (queueId === 400) return t(locale, "queue.draft.short");
+    if (queueId === 430) return t(locale, "queue.blind.short");
+    if (queueId === 490) return t(locale, "queue.quickplay.short");
   }
-  return known?.shortLabel ?? `Cola ${queueId}`;
+  if (known) return queueShortLabel(locale, known);
+  return t(locale, "queue.cola", { id: queueId });
 }

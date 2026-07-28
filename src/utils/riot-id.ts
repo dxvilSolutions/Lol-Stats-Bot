@@ -1,3 +1,6 @@
+import type { Locale } from "../i18n/locales.js";
+import { t } from "../i18n/locales.js";
+
 export interface ParsedRiotId {
   gameName: string;
   tagLine: string;
@@ -6,7 +9,10 @@ export interface ParsedRiotId {
 /**
  * Accepts "Name#TAG" or "Name-TAG" (common Discord-friendly form).
  */
-export function parseRiotId(input: string): ParsedRiotId {
+export function parseRiotId(
+  input: string,
+  locale: Locale = "es",
+): ParsedRiotId {
   const trimmed = input.trim();
   const hash = trimmed.lastIndexOf("#");
   const dash = trimmed.lastIndexOf("-");
@@ -21,15 +27,11 @@ export function parseRiotId(input: string): ParsedRiotId {
     gameName = trimmed.slice(0, dash).trim();
     tagLine = trimmed.slice(dash + 1).trim();
   } else {
-    throw new Error(
-      'Formato inválido. Usa Riot ID como "Nombre#TAG" (ej. Faker#KR1).',
-    );
+    throw new Error(t(locale, "error.riot_id"));
   }
 
   if (!gameName || !tagLine) {
-    throw new Error(
-      'Formato inválido. Usa Riot ID como "Nombre#TAG" (ej. Faker#KR1).',
-    );
+    throw new Error(t(locale, "error.riot_id"));
   }
 
   return { gameName, tagLine };

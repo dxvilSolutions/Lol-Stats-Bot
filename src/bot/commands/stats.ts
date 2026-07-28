@@ -1,9 +1,14 @@
-import { SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
-import { queueDiscordChoices, resolveQueue } from "../../config/queues.js";
+import {
+  Locale as DiscordLocale,
+  SlashCommandBuilder,
+  type ChatInputCommandInteraction,
+} from "discord.js";
+import { queueDiscordChoices, resolveQueue, queueLabel } from "../../config/queues.js";
 import {
   regionDiscordChoices,
   resolveRegion,
 } from "../../config/regions.js";
+import { t } from "../../i18n/locales.js";
 import { buildPlayerRecentStats } from "../../stats/player.js";
 import { parseRiotId } from "../../utils/riot-id.js";
 import { buildStatsEmbed } from "../embeds/stats-embed.js";
@@ -14,25 +19,53 @@ export const statsCommand: BotCommand = {
   data: new SlashCommandBuilder()
     .setName("stats")
     .setDescription(
-      "Resumen (WR, KDA, champs) de un modo: Solo, Flex, ARAM, Arena…",
+      "Summary (WR, KDA, champs) for a mode: Solo, Flex, ARAM, Arena…",
     )
+    .setDescriptionLocalizations({
+      [DiscordLocale.SpanishES]:
+        "Resumen (WR, KDA, champs) de un modo: Solo, Flex, ARAM, Arena…",
+      [DiscordLocale.EnglishUS]:
+        "Summary (WR, KDA, champs) for a mode: Solo, Flex, ARAM, Arena…",
+    })
     .addStringOption((opt) =>
       opt
         .setName("riot_id")
-        .setDescription('Riot ID, ej. "Nombre#TAG"')
+        .setDescription('Riot ID, e.g. "Name#TAG"')
+        .setDescriptionLocalizations({
+          [DiscordLocale.SpanishES]: 'Riot ID, ej. "Nombre#TAG"',
+          [DiscordLocale.EnglishUS]: 'Riot ID, e.g. "Name#TAG"',
+        })
         .setRequired(true),
     )
     .addStringOption((opt) =>
       opt
         .setName("modo")
-        .setDescription("Modo de juego (por defecto: Solo/Duo)")
+        .setNameLocalizations({
+          [DiscordLocale.SpanishES]: "modo",
+          [DiscordLocale.EnglishUS]: "mode",
+        })
+        .setDescription("Game mode (default: Solo/Duo)")
+        .setDescriptionLocalizations({
+          [DiscordLocale.SpanishES]: "Modo de juego (por defecto: Solo/Duo)",
+          [DiscordLocale.EnglishUS]: "Game mode (default: Solo/Duo)",
+        })
         .setRequired(false)
         .addChoices(...queueDiscordChoices()),
     )
     .addIntegerOption((opt) =>
       opt
         .setName("partidas")
-        .setDescription("Cuántas partidas recientes usar (1–20). Default: 12")
+        .setNameLocalizations({
+          [DiscordLocale.SpanishES]: "partidas",
+          [DiscordLocale.EnglishUS]: "games",
+        })
+        .setDescription("How many recent games to use (1–20). Default: 12")
+        .setDescriptionLocalizations({
+          [DiscordLocale.SpanishES]:
+            "Cuántas partidas recientes usar (1–20). Default: 12",
+          [DiscordLocale.EnglishUS]:
+            "How many recent games to use (1–20). Default: 12",
+        })
         .setRequired(false)
         .setMinValue(1)
         .setMaxValue(20),
@@ -40,13 +73,18 @@ export const statsCommand: BotCommand = {
     .addStringOption((opt) =>
       opt
         .setName("region")
-        .setDescription("Región del invocador (por defecto: LAN)")
+        .setDescription("Summoner region (default: LAN)")
+        .setDescriptionLocalizations({
+          [DiscordLocale.SpanishES]: "Región del invocador (por defecto: LAN)",
+          [DiscordLocale.EnglishUS]: "Summoner region (default: LAN)",
+        })
         .setRequired(false)
         .addChoices(...regionDiscordChoices().slice(0, 25)),
     ),
 
   async execute(interaction: ChatInputCommandInteraction, ctx) {
     await interaction.deferReply();
+    const locale = await ctx.resolveLocale(interaction.guildId);
 
     const riotIdRaw = interaction.options.getString("riot_id", true);
     const regionRaw = interaction.options.getString("region");
@@ -54,11 +92,11 @@ export const statsCommand: BotCommand = {
     const matchCount = interaction.options.getInteger("partidas") ?? 12;
 
     try {
-      const { gameName, tagLine } = parseRiotId(riotIdRaw);
+      const { gameName, tagLine } = parseRiotId(riotIdRaw, locale);
       const region = regionRaw
-        ? resolveRegion(regionRaw)
+        ? resolveRegion(regionRaw, locale)
         : ctx.defaultRegion;
-      const queue = resolveQueue(modoRaw);
+      const queue = resolveQueue(modoRaw, locale);
 
       const maxOpponentLookups = queue.opponentElo
         ? Math.min(20, Math.max(8, matchCount + 3))
@@ -78,15 +116,19 @@ export const statsCommand: BotCommand = {
 
       if (stats.sampleSize === 0) {
         await interaction.editReply({
-          content: `No encontré partidas recientes de **${queue.label}** para **${stats.riotId}** (${stats.region.label}).`,
+          content: t(locale, "error.no_stats", {
+            mode: queueLabel(locale, queue),
+            riotId: stats.riotId,
+            region: stats.region.label,
+          }),
         });
         return;
       }
 
-      const embed = await buildStatsEmbed(stats);
+      const embed = await buildStatsEmbed(stats, locale);
       await interaction.editReply({ embeds: [embed] });
     } catch (err) {
-      await interaction.editReply({ content: formatBotError(err) });
+      await interaction.editReply({ content: formatBotError(err, locale) });
     }
   },
 };

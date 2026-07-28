@@ -1,20 +1,16 @@
 import { RiotApiError } from "../riot/types.js";
+import type { Locale } from "../i18n/locales.js";
+import { t } from "../i18n/locales.js";
 
-export function formatBotError(err: unknown): string {
+export function formatBotError(err: unknown, locale: Locale): string {
   if (err instanceof RiotApiError) {
-    if (err.status === 404) {
-      return "No encontré ese invocador. Revisa Riot ID y región.";
-    }
+    if (err.status === 404) return t(locale, "error.not_found");
     if (err.status === 401 || err.status === 403) {
-      return "La API key de Riot rechazó la petición (¿expiró la key?).";
+      return t(locale, "error.api_key");
     }
-    if (err.status === 429) {
-      return "Rate limit de Riot. Espera un momento e inténtalo de nuevo.";
-    }
-    return `Error de Riot API (${err.status}).`;
+    if (err.status === 429) return t(locale, "error.rate_limit");
+    return t(locale, "error.riot_status", { status: err.status });
   }
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return "Error inesperado.";
+  if (err instanceof Error) return err.message;
+  return t(locale, "error.unexpected");
 }

@@ -8,6 +8,9 @@
  * scattering platform IDs across the bot.
  */
 
+import type { Locale } from "../i18n/locales.js";
+import { t } from "../i18n/locales.js";
+
 export type RegionalCluster = "americas" | "europe" | "asia" | "sea";
 
 export type PlatformId =
@@ -68,12 +71,17 @@ const byAlias = new Map(
 
 export const DEFAULT_REGION_ALIAS = "lan";
 
-export function resolveRegion(input?: string | null): RegionConfig {
+export function resolveRegion(
+  input?: string | null,
+  locale: Locale = "en",
+): RegionConfig {
   const key = (input ?? DEFAULT_REGION_ALIAS).trim().toLowerCase();
   const region = byAlias.get(key);
   if (!region) {
     const known = REGIONS.map((r) => r.alias).join(", ");
-    throw new Error(`Región desconocida: "${input}". Usa una de: ${known}`);
+    throw new Error(
+      t(locale, "error.unknown_region", { input: String(input), known }),
+    );
   }
   return region;
 }

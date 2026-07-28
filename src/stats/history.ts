@@ -1,5 +1,4 @@
 import type { QueueConfig } from "../config/queues.js";
-import { labelForQueueId } from "../config/queues.js";
 import type { RegionConfig } from "../config/regions.js";
 import type { RiotClient } from "../riot/client.js";
 import type { MatchDto, MatchParticipant } from "../riot/types.js";
@@ -8,7 +7,6 @@ import { fetchMatchesForQueue } from "./player.js";
 export interface HistoryMatchRow {
   matchId: string;
   queueId: number;
-  queueLabel: string;
   win: boolean;
   champion: string;
   kills: number;
@@ -83,7 +81,6 @@ function toRow(match: MatchDto, self: MatchParticipant): HistoryMatchRow {
   return {
     matchId: match.metadata.matchId,
     queueId: match.info.queueId,
-    queueLabel: labelForQueueId(match.info.queueId),
     win: self.win,
     champion: self.championName,
     kills: self.kills,

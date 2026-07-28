@@ -5,7 +5,7 @@ import { RiotClient } from "./riot/client.js";
 async function main() {
   const config = loadConfig();
   const riot = new RiotClient(config.riotApiKey);
-  const bot = createBot(riot, config.defaultRegion);
+  const bot = createBot(riot, config.defaultRegion, config.defaultLocale);
   await bot.login(config.discordToken);
 }
 
