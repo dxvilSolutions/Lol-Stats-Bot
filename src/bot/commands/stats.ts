@@ -1,134 +1,71 @@
-import {
-  Locale as DiscordLocale,
-  SlashCommandBuilder,
-  type ChatInputCommandInteraction,
-} from "discord.js";
-import { queueDiscordChoices, resolveQueue, queueLabel } from "../../config/queues.js";
-import {
-  regionDiscordChoices,
-  resolveRegion,
-} from "../../config/regions.js";
+import type { ChatInputCommandInteraction } from "discord.js";
+import { queueLabel, resolveQueue } from "../../config/queues.js";
+import { resolveRegion } from "../../config/regions.js";
 import { t } from "../../i18n/locales.js";
 import { buildPlayerRecentStats } from "../../stats/player.js";
 import { parseRiotId } from "../../utils/riot-id.js";
 import { buildStatsEmbed } from "../embeds/stats-embed.js";
 import { formatBotError } from "../format-error.js";
-import type { BotCommand } from "./types.js";
+import {
+  getGamesOption,
+  getModeOption,
+  replyLoading,
+} from "../interaction-utils.js";
+import type { CommandContext } from "./types.js";
 
-export const statsCommand: BotCommand = {
-  data: new SlashCommandBuilder()
-    .setName("stats")
-    .setDescription(
-      "Summary (WR, KDA, champs) for a mode: Solo, Flex, ARAM, Arena…",
-    )
-    .setDescriptionLocalizations({
-      [DiscordLocale.SpanishES]:
-        "Resumen (WR, KDA, champs) de un modo: Solo, Flex, ARAM, Arena…",
-      [DiscordLocale.EnglishUS]:
-        "Summary (WR, KDA, champs) for a mode: Solo, Flex, ARAM, Arena…",
-    })
-    .addStringOption((opt) =>
-      opt
-        .setName("riot_id")
-        .setDescription('Riot ID, e.g. "Name#TAG"')
-        .setDescriptionLocalizations({
-          [DiscordLocale.SpanishES]: 'Riot ID, ej. "Nombre#TAG"',
-          [DiscordLocale.EnglishUS]: 'Riot ID, e.g. "Name#TAG"',
-        })
-        .setRequired(true),
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName("modo")
-        .setNameLocalizations({
-          [DiscordLocale.SpanishES]: "modo",
-          [DiscordLocale.EnglishUS]: "mode",
-        })
-        .setDescription("Game mode (default: Solo/Duo)")
-        .setDescriptionLocalizations({
-          [DiscordLocale.SpanishES]: "Modo de juego (por defecto: Solo/Duo)",
-          [DiscordLocale.EnglishUS]: "Game mode (default: Solo/Duo)",
-        })
-        .setRequired(false)
-        .addChoices(...queueDiscordChoices()),
-    )
-    .addIntegerOption((opt) =>
-      opt
-        .setName("partidas")
-        .setNameLocalizations({
-          [DiscordLocale.SpanishES]: "partidas",
-          [DiscordLocale.EnglishUS]: "games",
-        })
-        .setDescription("How many recent games to use (1–20). Default: 12")
-        .setDescriptionLocalizations({
-          [DiscordLocale.SpanishES]:
-            "Cuántas partidas recientes usar (1–20). Default: 12",
-          [DiscordLocale.EnglishUS]:
-            "How many recent games to use (1–20). Default: 12",
-        })
-        .setRequired(false)
-        .setMinValue(1)
-        .setMaxValue(20),
-    )
-    .addStringOption((opt) =>
-      opt
-        .setName("region")
-        .setDescription("Summoner region (default: LAN)")
-        .setDescriptionLocalizations({
-          [DiscordLocale.SpanishES]: "Región del invocador (por defecto: LAN)",
-          [DiscordLocale.EnglishUS]: "Summoner region (default: LAN)",
-        })
-        .setRequired(false)
-        .addChoices(...regionDiscordChoices().slice(0, 25)),
-    ),
+export async function executeStats(
+  interaction: ChatInputCommandInteraction,
+  ctx: CommandContext,
+): Promise<void> {
+  const locale = await ctx.resolveLocale(interaction.guildId);
+  await replyLoading(interaction, locale);
 
-  async execute(interaction: ChatInputCommandInteraction, ctx) {
-    await interaction.deferReply();
-    const locale = await ctx.resolveLocale(interaction.guildId);
+  const riotIdRaw = interaction.options.getString("riot_id", true);
+  const regionRaw = interaction.options.getString("region");
+  const modoRaw = getModeOption(interaction);
+  const matchCount = getGamesOption(interaction, 12);
 
-    const riotIdRaw = interaction.options.getString("riot_id", true);
-    const regionRaw = interaction.options.getString("region");
-    const modoRaw = interaction.options.getString("modo");
-    const matchCount = interaction.options.getInteger("partidas") ?? 12;
+  try {
+    const { gameName, tagLine } = parseRiotId(riotIdRaw, locale);
+    const region = regionRaw
+      ? resolveRegion(regionRaw, locale)
+      : ctx.defaultRegion;
+    const queue = resolveQueue(modoRaw, locale);
 
-    try {
-      const { gameName, tagLine } = parseRiotId(riotIdRaw, locale);
-      const region = regionRaw
-        ? resolveRegion(regionRaw, locale)
-        : ctx.defaultRegion;
-      const queue = resolveQueue(modoRaw, locale);
+    const maxOpponentLookups = queue.opponentElo
+      ? Math.min(20, Math.max(8, matchCount + 3))
+      : 0;
 
-      const maxOpponentLookups = queue.opponentElo
-        ? Math.min(20, Math.max(8, matchCount + 3))
-        : 0;
+    const stats = await buildPlayerRecentStats(
+      ctx.riot,
+      region,
+      gameName,
+      tagLine,
+      {
+        matchCount,
+        maxOpponentLookups,
+        queue,
+      },
+    );
 
-      const stats = await buildPlayerRecentStats(
-        ctx.riot,
-        region,
-        gameName,
-        tagLine,
-        {
-          matchCount,
-          maxOpponentLookups,
-          queue,
-        },
-      );
-
-      if (stats.sampleSize === 0) {
-        await interaction.editReply({
-          content: t(locale, "error.no_stats", {
-            mode: queueLabel(locale, queue),
-            riotId: stats.riotId,
-            region: stats.region.label,
-          }),
-        });
-        return;
-      }
-
-      const embed = await buildStatsEmbed(stats, locale);
-      await interaction.editReply({ embeds: [embed] });
-    } catch (err) {
-      await interaction.editReply({ content: formatBotError(err, locale) });
+    if (stats.sampleSize === 0) {
+      await interaction.editReply({
+        content: t(locale, "error.no_stats", {
+          mode: queueLabel(locale, queue),
+          riotId: stats.riotId,
+          region: stats.region.label,
+        }),
+        embeds: [],
+      });
+      return;
     }
-  },
-};
+
+    const embed = await buildStatsEmbed(stats, locale);
+    await interaction.editReply({ content: null, embeds: [embed] });
+  } catch (err) {
+    await interaction.editReply({
+      content: formatBotError(err, locale),
+      embeds: [],
+    });
+  }
+}

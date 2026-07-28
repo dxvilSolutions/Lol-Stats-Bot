@@ -1,13 +1,18 @@
-import type { BotCommand } from "./types.js";
-import { historialCommand, historyCommand } from "./historial.js";
-import { languageCommand } from "./language.js";
-import { statsCommand } from "./stats.js";
+import type { CommandExecute } from "./types.js";
+import { executeHistory } from "./historial.js";
+import { executeLanguage } from "./language.js";
+import { executeStats } from "./stats.js";
 
-export type { BotCommand, CommandContext } from "./types.js";
+export type { CommandContext, CommandExecute } from "./types.js";
 
-export const commands: BotCommand[] = [
-  statsCommand,
-  historialCommand,
-  historyCommand,
-  languageCommand,
-];
+/**
+ * Map every registered slash name → handler.
+ * ES and EN use different names for history/language.
+ */
+export const commandHandlers: Record<string, CommandExecute> = {
+  stats: executeStats,
+  historial: executeHistory,
+  history: executeHistory,
+  language: executeLanguage,
+  idioma: executeLanguage,
+};

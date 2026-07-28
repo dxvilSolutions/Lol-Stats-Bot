@@ -38,6 +38,10 @@ const es: Dict = {
   "lang.dm": "Este comando solo funciona dentro de un servidor.",
   "lang.choice.es": "Español",
   "lang.choice.en": "English",
+  "lang.sync_ok":
+    "✅ Idioma del servidor: **Español**. Las opciones de los comandos se actualizaron.",
+  "lang.syncing": "Actualizando comandos del servidor…",
+  "loading": "⏳ Consultando Riot API…",
 
   // Generic errors
   "error.generic": "Hubo un error al ejecutar el comando.",
@@ -155,6 +159,10 @@ const en: Dict = {
   "lang.dm": "This command only works inside a server.",
   "lang.choice.es": "Español",
   "lang.choice.en": "English",
+  "lang.sync_ok":
+    "✅ Server language: **English**. Slash command options were updated.",
+  "lang.syncing": "Updating server commands…",
+  "loading": "⏳ Fetching from Riot API…",
 
   "error.generic": "Something went wrong while running that command.",
   "error.unexpected": "Unexpected error.",

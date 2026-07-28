@@ -1,7 +1,5 @@
 import type {
   ChatInputCommandInteraction,
-  SlashCommandOptionsOnlyBuilder,
-  SlashCommandBuilder,
 } from "discord.js";
 import type { RegionConfig } from "../../config/regions.js";
 import type { Locale } from "../../i18n/locales.js";
@@ -12,12 +10,11 @@ export interface CommandContext {
   defaultRegion: RegionConfig;
   defaultLocale: Locale;
   resolveLocale: (guildId: string | null | undefined) => Promise<Locale>;
+  /** Re-register slash commands for a guild in a given language. */
+  syncGuildCommands?: (guildId: string, locale: Locale) => Promise<void>;
 }
 
-export interface BotCommand {
-  data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder;
-  execute: (
-    interaction: ChatInputCommandInteraction,
-    ctx: CommandContext,
-  ) => Promise<void>;
-}
+export type CommandExecute = (
+  interaction: ChatInputCommandInteraction,
+  ctx: CommandContext,
+) => Promise<void>;

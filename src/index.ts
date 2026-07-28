@@ -7,7 +7,13 @@ async function main() {
   const config = loadConfig();
   await initGuildSettingsStore();
   const riot = new RiotClient(config.riotApiKey);
-  const bot = createBot(riot, config.defaultRegion, config.defaultLocale);
+  const bot = createBot(
+    riot,
+    config.defaultRegion,
+    config.defaultLocale,
+    config.discordToken,
+    config.discordClientId,
+  );
   await bot.login(config.discordToken);
 }
 

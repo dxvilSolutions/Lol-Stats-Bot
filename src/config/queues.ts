@@ -176,17 +176,12 @@ export function resolveQueue(
   return queue;
 }
 
-export function queueDiscordChoices(): {
+export function queueDiscordChoices(locale: Locale = "en"): {
   name: string;
-  name_localizations: Record<string, string>;
   value: string;
 }[] {
   return QUEUES.map((q) => ({
-    name: `${q.emoji} ${t("en", `queue.${q.alias}`)}`,
-    name_localizations: {
-      "en-US": `${q.emoji} ${t("en", `queue.${q.alias}`)}`,
-      "es-ES": `${q.emoji} ${t("es", `queue.${q.alias}`)}`,
-    },
+    name: t(locale, `queue.${q.alias}`),
     value: q.alias,
   }));
 }

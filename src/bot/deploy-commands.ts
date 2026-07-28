@@ -1,29 +1,34 @@
-import { REST, Routes } from "discord.js";
 import { loadConfig } from "../config/env.js";
-import { commands } from "./commands/index.js";
+import { createLocaleResolver } from "../i18n/index.js";
+import {
+  clearGlobalCommands,
+  createDiscordRest,
+  deployGuildCommands,
+} from "./register-commands.js";
 
+/**
+ * Clears leftover global commands and syncs guild slash commands.
+ * Prefer letting the running bot sync on ready; use this for one-off fixes.
+ */
 async function main() {
   const config = loadConfig();
-  const body = commands.map((c) => c.data.toJSON());
+  const rest = createDiscordRest(config.discordToken);
+  const locales = createLocaleResolver(config.defaultLocale);
 
-  const rest = new REST({ version: "10" }).setToken(config.discordToken);
+  await clearGlobalCommands(rest, config.discordClientId);
 
   if (config.discordGuildId) {
-    await rest.put(
-      Routes.applicationGuildCommands(
-        config.discordClientId,
-        config.discordGuildId,
-      ),
-      { body },
-    );
-    console.log(
-      `Deployed ${body.length} guild command(s) to ${config.discordGuildId}`,
+    const locale = await locales.resolve(config.discordGuildId);
+    await deployGuildCommands(
+      rest,
+      config.discordClientId,
+      config.discordGuildId,
+      locale,
     );
   } else {
-    await rest.put(Routes.applicationCommands(config.discordClientId), {
-      body,
-    });
-    console.log(`Deployed ${body.length} global command(s)`);
+    console.log(
+      "No DISCORD_GUILD_ID set. Global commands cleared; the running bot will sync each guild on startup.",
+    );
   }
 }
 
